@@ -671,14 +671,12 @@ def render_summary_cards(st: Any, summary: dict[str, int]) -> None:
     html = ['<div class="summary-grid">']
     for title, amount, note in cards:
         html.append(
-            f"""
-            <div class="summary-card">
-                <div class="summary-title">{escape(title)}</div>
-                <div class="summary-value">{escape(format_compact_won(amount))}</div>
-                <div class="summary-full">{escape(format_won(amount))}</div>
-                <div class="summary-note">{escape(note)}</div>
-            </div>
-            """
+            '<div class="summary-card">'
+            f'<div class="summary-title">{escape(title)}</div>'
+            f'<div class="summary-value">{escape(format_compact_won(amount))}</div>'
+            f'<div class="summary-full">{escape(format_won(amount))}</div>'
+            f'<div class="summary-note">{escape(note)}</div>'
+            "</div>"
         )
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
@@ -692,6 +690,14 @@ def render_amount_strip(st: Any, title: str, pairs: list[tuple[str, int | str]])
             f'<span class="strip-item"><span>{escape(label)}</span><strong>{escape(display)}</strong></span>'
         )
     html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def render_formula_panel(st: Any, title: str, items: list[str]) -> None:
+    html = [f'<div class="formula-panel"><h4>{escape(title)}</h4><ul>']
+    for item in items:
+        html.append(f"<li>{item}</li>")
+    html.append("</ul></div>")
     st.markdown("".join(html), unsafe_allow_html=True)
 
 
@@ -867,17 +873,15 @@ def run_app() -> None:
     )
 
     st.markdown(
-        """
-        <div class="app-eyebrow">Seoul Home Purchase Cost</div>
-        <h1 class="app-title">서울 주택 구매비용 계산기</h1>
-        <p class="app-subtitle">
-        취득세, 중개보수, 국민주택채권, 대출 근저당 비용을 한 화면에서 조정하고 항목별로 확인합니다.
-        </p>
-        <div class="notice">
-        감면은 자동 판정하지 않습니다. 입력한 취득세 감면액은 취득세 본세에서만 단순 차감하며,
-        지방교육세 비례 감면 또는 감면분 농어촌특별세 부과는 별도 입력으로 반영하세요.
-        </div>
-        """,
+        '<div class="app-eyebrow">Seoul Home Purchase Cost</div>'
+        '<h1 class="app-title">서울 주택 구매비용 계산기</h1>'
+        '<p class="app-subtitle">'
+        "취득세, 중개보수, 국민주택채권, 대출 근저당 비용을 한 화면에서 조정하고 항목별로 확인합니다."
+        "</p>"
+        '<div class="notice">'
+        "감면은 자동 판정하지 않습니다. 입력한 취득세 감면액은 취득세 본세에서만 단순 차감하며, "
+        "지방교육세 비례 감면 또는 감면분 농어촌특별세 부과는 별도 입력으로 반영하세요."
+        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -1182,56 +1186,67 @@ def run_app() -> None:
             )
 
     with tab_formula:
-        st.markdown(
-            f"""
-            <div class="formula-panel">
-                <h4>취득세</h4>
-                <ul>
-                    <li>적용 판단: <code>{escape(result['profile']['label'])}</code></li>
-                    <li>과세표준 <code>{escape(format_won(inputs.tax_base))}</code> x <code>{escape(format_rate(result['profile']['rate']))}</code></li>
-                    <li>감면액은 취득세 본세에서만 차감: <code>{escape(format_won(result['gross_acquisition_tax']))}</code> - <code>{escape(format_won(result['acquisition_relief']))}</code></li>
-                </ul>
-            </div>
-            <div class="formula-panel">
-                <h4>지방교육세와 농어촌특별세</h4>
-                <ul>
-                    <li>기본세율 지방교육세: <code>과세표준 x 취득세율 x 0.5 x 0.2</code></li>
-                    <li>중과세율 지방교육세: <code>과세표준 x 0.4%</code></li>
-                    <li>농어촌특별세: 85㎡ 이하는 0원, 85㎡ 초과는 기본 0.2% / 8% 중과 0.6% / 12% 중과 1.0%</li>
-                </ul>
-            </div>
-            <div class="formula-panel">
-                <h4>국민주택채권</h4>
-                <ul>
-                    <li>소유권 이전: 시가표준액 <code>{escape(format_won(inputs.bond_standard_value))}</code> x 서울·광역시 주택 매입률</li>
-                    <li>단수 처리: 0원은 0원, 0원 초과 1만원 미만은 1만원, 1만원 이상은 1만원 단위 반올림</li>
-                    <li>즉시매도 비용: 채권 매입액 x 할인율 <code>{escape(format_rate(inputs.bond_discount_rate))}</code></li>
-                </ul>
-            </div>
-            <div class="formula-panel">
-                <h4>대출</h4>
-                <ul>
-                    <li>채권최고액: 대출금 x 채권최고액 비율</li>
-                    <li>근저당 등록면허세: 채권최고액 x 0.2%</li>
-                    <li>근저당 지방교육세: 등록면허세 x 20%</li>
-                    <li>저당권 국민주택채권: 채권최고액 x 1%, 매입액 상한 10억원</li>
-                </ul>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        render_formula_panel(
+            st,
+            "취득세",
+            [
+                f"적용 판단: <code>{escape(result['profile']['label'])}</code>",
+                (
+                    f"과세표준 <code>{escape(format_won(inputs.tax_base))}</code> x "
+                    f"<code>{escape(format_rate(result['profile']['rate']))}</code>"
+                ),
+                (
+                    f"감면액은 취득세 본세에서만 차감: "
+                    f"<code>{escape(format_won(result['gross_acquisition_tax']))}</code> - "
+                    f"<code>{escape(format_won(result['acquisition_relief']))}</code>"
+                ),
+            ],
+        )
+        render_formula_panel(
+            st,
+            "지방교육세와 농어촌특별세",
+            [
+                "기본세율 지방교육세: <code>과세표준 x 취득세율 x 0.5 x 0.2</code>",
+                "중과세율 지방교육세: <code>과세표준 x 0.4%</code>",
+                "농어촌특별세: 85㎡ 이하는 0원, 85㎡ 초과는 기본 0.2% / 8% 중과 0.6% / 12% 중과 1.0%",
+            ],
+        )
+        render_formula_panel(
+            st,
+            "국민주택채권",
+            [
+                (
+                    f"소유권 이전: 시가표준액 "
+                    f"<code>{escape(format_won(inputs.bond_standard_value))}</code> x 서울·광역시 주택 매입률"
+                ),
+                "단수 처리: 0원은 0원, 0원 초과 1만원 미만은 1만원, 1만원 이상은 1만원 단위 반올림",
+                f"즉시매도 비용: 채권 매입액 x 할인율 <code>{escape(format_rate(inputs.bond_discount_rate))}</code>",
+            ],
+        )
+        render_formula_panel(
+            st,
+            "대출",
+            [
+                "채권최고액: 대출금 x 채권최고액 비율",
+                "근저당 등록면허세: 채권최고액 x 0.2%",
+                "근저당 지방교육세: 등록면허세 x 20%",
+                "저당권 국민주택채권: 채권최고액 x 1%, 매입액 상한 10억원",
+            ],
         )
 
     with tab_sources:
         st.markdown(
-            """
-            - 취득세·인지세·지방교육세·농어촌특별세 개요: [찾기쉬운 생활법령정보](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=3&cnpClsNo=2&csmSeq=534&menuType=cnpcls&popMenu=ov)
-            - 다주택 중과: [지방세법 제13조의2](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1020081767)
-            - 중개보수: [찾기쉬운 생활법령정보 - 부동산 중개보수 산정](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=2&cnpClsNo=2&csmSeq=649&popMenu=ov)
-            - 국민주택채권 조회: [주택도시기금 매입대상금액조회](https://nhuf.molit.go.kr/FP/FP07/FP0705/FP070504.jsp)
-            - 국민주택채권 매입률 별표: [주택도시기금법 시행령 별표](https://www.law.go.kr/LSW/flDownload.do?bylClsCd=110201&flSeq=33335725&gubun=)
-
-            이 계산기는 사전 검토용입니다. 실제 신고·납부 전에는 관할 구청, 세무사, 법무사, 금융기관 고지액을 확인하세요.
-            """
+            "- 취득세·인지세·지방교육세·농어촌특별세 개요: "
+            "[찾기쉬운 생활법령정보](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=3&cnpClsNo=2&csmSeq=534&menuType=cnpcls&popMenu=ov)\n"
+            "- 다주택 중과: "
+            "[지방세법 제13조의2](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1020081767)\n"
+            "- 중개보수: "
+            "[찾기쉬운 생활법령정보 - 부동산 중개보수 산정](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=2&cnpClsNo=2&csmSeq=649&popMenu=ov)\n"
+            "- 국민주택채권 조회: "
+            "[주택도시기금 매입대상금액조회](https://nhuf.molit.go.kr/FP/FP07/FP0705/FP070504.jsp)\n"
+            "- 국민주택채권 매입률 별표: "
+            "[주택도시기금법 시행령 별표](https://www.law.go.kr/LSW/flDownload.do?bylClsCd=110201&flSeq=33335725&gubun=)\n\n"
+            "이 계산기는 사전 검토용입니다. 실제 신고·납부 전에는 관할 구청, 세무사, 법무사, 금융기관 고지액을 확인하세요."
         )
 
 
