@@ -4,6 +4,7 @@ import csv
 import io
 import sys
 from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from html import escape
 from typing import Any
@@ -55,6 +56,45 @@ class PurchaseInputs:
     loan_stamp_buyer_share: Decimal
     mortgage_registration_fee: int
     loan_other_fee: int
+
+
+@dataclass(frozen=True)
+class SubscriptionInputs:
+    supply_price: int
+    area_m2: Decimal
+    application_date: date
+    contract_date: date
+    balance_date: date
+    contract_rate: Decimal
+    interim_total_rate: Decimal
+    interim_count: int
+    interim_loan_rounds: tuple[int, ...]
+    interim_loan_rate: Decimal
+    interest_payment_type: str
+    balcony_fee: int
+    option_fee: int
+    balance_loan: int
+    other_funding: int
+    acquisition_tax_base: int
+    acquisition_tax_payment_date: date
+    over_85m2: bool
+    buyer_type: str
+    home_count_after: str
+    regulated_area: bool
+    temporary_two_home: bool
+    acquisition_tax_relief: int
+    relief_related_extra_tax: int
+    sale_stamp_buyer_share: Decimal
+
+
+@dataclass(frozen=True)
+class SubscriptionScheduleRow:
+    payment_date: date
+    item: str
+    round_no: int
+    payment_amount: int
+    loan_applied: bool
+    note: str = ""
 
 
 SEOUL_HOME_BROKERAGE_BANDS = [
@@ -160,8 +200,9 @@ def basic_acquisition_tax_rate(tax_base: int) -> tuple[Decimal, str]:
     return Decimal("0.03"), "9억원 초과 기본세율"
 
 
-def acquisition_tax_profile(inputs: PurchaseInputs) -> dict[str, Any]:
-    basic_rate, basic_reason = basic_acquisition_tax_rate(inputs.tax_base)
+def acquisition_tax_profile(inputs: Any) -> dict[str, Any]:
+    tax_base = inputs.tax_base if hasattr(inputs, "tax_base") else inputs.acquisition_tax_base
+    basic_rate, basic_reason = basic_acquisition_tax_rate(tax_base)
 
     if inputs.buyer_type == "법인":
         return {
@@ -219,6 +260,48 @@ def acquisition_tax_profile(inputs: PurchaseInputs) -> dict[str, Any]:
         "surtax_level": "none",
         "basic_rate": basic_rate,
         "basic_reason": basic_reason,
+    }
+
+
+def calculate_acquisition_tax_components(inputs: Any) -> dict[str, Any]:
+    profile = acquisition_tax_profile(inputs)
+    tax_rate = profile["rate"]
+    gross_acquisition_tax = money(inputs.tax_base if hasattr(inputs, "tax_base") else inputs.acquisition_tax_base, tax_rate)
+    tax_base = inputs.tax_base if hasattr(inputs, "tax_base") else inputs.acquisition_tax_base
+    acquisition_relief = min(max(inputs.acquisition_tax_relief, 0), gross_acquisition_tax)
+    net_acquisition_tax = gross_acquisition_tax - acquisition_relief
+
+    if profile["surtax_level"] == "none":
+        local_education_tax = money(Decimal(tax_base) * tax_rate * Decimal("0.5"), Decimal("0.2"))
+        rural_special_rate = Decimal("0.002") if inputs.over_85m2 else Decimal("0")
+    else:
+        local_education_tax = money(tax_base, Decimal("0.004"))
+        if not inputs.over_85m2:
+            rural_special_rate = Decimal("0")
+        elif profile["surtax_level"] == "8%":
+            rural_special_rate = Decimal("0.006")
+        else:
+            rural_special_rate = Decimal("0.01")
+    rural_special_tax = money(tax_base, rural_special_rate)
+    relief_related_extra_tax = max(getattr(inputs, "relief_related_extra_tax", 0), 0)
+
+    return {
+        "profile": profile,
+        "tax_rate": tax_rate,
+        "tax_base": tax_base,
+        "gross_acquisition_tax": gross_acquisition_tax,
+        "acquisition_relief": acquisition_relief,
+        "net_acquisition_tax": net_acquisition_tax,
+        "local_education_tax": local_education_tax,
+        "rural_special_rate": rural_special_rate,
+        "rural_special_tax": rural_special_tax,
+        "relief_related_extra_tax": relief_related_extra_tax,
+        "total_tax": (
+            net_acquisition_tax
+            + local_education_tax
+            + rural_special_tax
+            + relief_related_extra_tax
+        ),
     }
 
 
@@ -323,24 +406,15 @@ def add_row(
 
 
 def calculate_costs(inputs: PurchaseInputs) -> dict[str, Any]:
-    profile = acquisition_tax_profile(inputs)
-    tax_rate = profile["rate"]
-    gross_acquisition_tax = money(inputs.tax_base, tax_rate)
-    acquisition_relief = min(max(inputs.acquisition_tax_relief, 0), gross_acquisition_tax)
-    net_acquisition_tax = gross_acquisition_tax - acquisition_relief
-
-    if profile["surtax_level"] == "none":
-        local_education_tax = money(Decimal(inputs.tax_base) * tax_rate * Decimal("0.5"), Decimal("0.2"))
-        rural_special_rate = Decimal("0.002") if inputs.over_85m2 else Decimal("0")
-    else:
-        local_education_tax = money(inputs.tax_base, Decimal("0.004"))
-        if not inputs.over_85m2:
-            rural_special_rate = Decimal("0")
-        elif profile["surtax_level"] == "8%":
-            rural_special_rate = Decimal("0.006")
-        else:
-            rural_special_rate = Decimal("0.01")
-    rural_special_tax = money(inputs.tax_base, rural_special_rate)
+    acquisition_tax = calculate_acquisition_tax_components(inputs)
+    profile = acquisition_tax["profile"]
+    tax_rate = acquisition_tax["tax_rate"]
+    gross_acquisition_tax = acquisition_tax["gross_acquisition_tax"]
+    acquisition_relief = acquisition_tax["acquisition_relief"]
+    net_acquisition_tax = acquisition_tax["net_acquisition_tax"]
+    local_education_tax = acquisition_tax["local_education_tax"]
+    rural_special_rate = acquisition_tax["rural_special_rate"]
+    rural_special_tax = acquisition_tax["rural_special_tax"]
 
     sale_stamp_total, sale_stamp_band = calculate_stamp_tax(inputs.purchase_price)
     sale_stamp_buyer = money(sale_stamp_total, inputs.sale_stamp_buyer_share)
@@ -546,6 +620,329 @@ def calculate_costs(inputs: PurchaseInputs) -> dict[str, Any]:
     }
 
 
+def add_months(base_date: date, months: int) -> date:
+    month_index = base_date.month - 1 + months
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    month_lengths = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    return date(year, month, min(base_date.day, month_lengths[month - 1]))
+
+
+def distribute_amount(total: int, count: int) -> list[int]:
+    if count <= 0:
+        return []
+    base = total // count
+    remainder = total - base * count
+    amounts = [base for _ in range(count)]
+    for index in range(remainder):
+        amounts[index % count] += 1
+    return amounts
+
+
+def evenly_spaced_dates(start_date: date, end_date: date, count: int) -> list[date]:
+    if count <= 0:
+        return []
+    if end_date <= start_date:
+        return [start_date + timedelta(days=30 * index) for index in range(1, count + 1)]
+    total_days = (end_date - start_date).days
+    return [
+        start_date + timedelta(days=round(total_days * index / max(count, 1)))
+        for index in range(1, count + 1)
+    ]
+
+
+def generate_subscription_schedule(inputs: SubscriptionInputs) -> list[SubscriptionScheduleRow]:
+    rows: list[SubscriptionScheduleRow] = []
+    contract_total = money(inputs.supply_price, inputs.contract_rate)
+    if inputs.contract_rate == Decimal("0.20"):
+        first_contract = money(inputs.supply_price, Decimal("0.10"))
+        rows.append(SubscriptionScheduleRow(inputs.contract_date, "계약금", 1, first_contract, False, "계약 시 10%"))
+        rows.append(
+            SubscriptionScheduleRow(
+                inputs.contract_date + timedelta(days=30),
+                "계약금",
+                2,
+                contract_total - first_contract,
+                False,
+                "계약금 2차",
+            )
+        )
+    else:
+        rows.append(SubscriptionScheduleRow(inputs.contract_date, "계약금", 1, contract_total, False, "계약 시 납부"))
+
+    interim_total = money(inputs.supply_price, inputs.interim_total_rate)
+    interim_amounts = distribute_amount(interim_total, inputs.interim_count)
+    interim_start = inputs.contract_date + timedelta(days=30)
+    interim_end = inputs.balance_date - timedelta(days=183)
+    if interim_end <= interim_start:
+        interim_end = inputs.balance_date - timedelta(days=30)
+    interim_dates = evenly_spaced_dates(interim_start, interim_end, inputs.interim_count)
+    for index, amount in enumerate(interim_amounts, start=1):
+        rows.append(
+            SubscriptionScheduleRow(
+                interim_dates[index - 1],
+                "중도금",
+                index,
+                amount,
+                index in inputs.interim_loan_rounds,
+                "중도금대출 적용" if index in inputs.interim_loan_rounds else "자납",
+            )
+        )
+
+    balance_amount = inputs.supply_price - contract_total - interim_total
+    rows.append(SubscriptionScheduleRow(inputs.balance_date, "잔금", 1, balance_amount, False, "입주/잔금 시 납부"))
+
+    option_total = inputs.balcony_fee + inputs.option_fee
+    if option_total > 0:
+        option_contract = money(option_total, Decimal("0.10"))
+        rows.append(SubscriptionScheduleRow(inputs.contract_date, "옵션비", 1, option_contract, False, "발코니/옵션 10%"))
+        rows.append(
+            SubscriptionScheduleRow(
+                inputs.balance_date,
+                "옵션비",
+                2,
+                option_total - option_contract,
+                False,
+                "발코니/옵션 잔금",
+            )
+        )
+
+    return sorted(rows, key=lambda row: (row.payment_date, row.item, row.round_no))
+
+
+def normalize_subscription_schedule(value: Any) -> list[SubscriptionScheduleRow]:
+    if hasattr(value, "to_dict"):
+        records = value.to_dict("records")
+    else:
+        records = list(value)
+    rows: list[SubscriptionScheduleRow] = []
+    for record in records:
+        raw_date = record.get("납부일")
+        if hasattr(raw_date, "date"):
+            payment_date = raw_date.date()
+        elif isinstance(raw_date, date):
+            payment_date = raw_date
+        else:
+            payment_date = date.fromisoformat(str(raw_date))
+        rows.append(
+            SubscriptionScheduleRow(
+                payment_date=payment_date,
+                item=str(record.get("항목", "")),
+                round_no=int(record.get("회차", 0) or 0),
+                payment_amount=int(record.get("납부액", 0) or 0),
+                loan_applied=bool(record.get("중도금대출", False)),
+                note=str(record.get("비고", "")),
+            )
+        )
+    return sorted(rows, key=lambda row: (row.payment_date, row.item, row.round_no))
+
+
+def subscription_schedule_to_editor_rows(rows: list[SubscriptionScheduleRow]) -> list[dict[str, Any]]:
+    return [
+        {
+            "납부일": row.payment_date,
+            "항목": row.item,
+            "회차": row.round_no,
+            "납부액": row.payment_amount,
+            "중도금대출": row.loan_applied,
+            "비고": row.note,
+        }
+        for row in rows
+    ]
+
+
+def calculate_interim_interest(
+    loans: list[tuple[date, int]],
+    balance_date: date,
+    annual_rate: Decimal,
+) -> int:
+    total = 0
+    for loan_date, principal in loans:
+        days = max((balance_date - loan_date).days, 0)
+        total += won(Decimal(principal) * annual_rate * Decimal(days) / Decimal("365"))
+    return total
+
+
+def calculate_subscription_costs(
+    inputs: SubscriptionInputs,
+    schedule_rows: list[SubscriptionScheduleRow],
+) -> dict[str, Any]:
+    acquisition_tax = calculate_acquisition_tax_components(inputs)
+    sale_stamp_total, sale_stamp_band = calculate_stamp_tax(inputs.supply_price)
+    sale_stamp_buyer = money(sale_stamp_total, inputs.sale_stamp_buyer_share)
+
+    interim_loans: list[tuple[date, int]] = []
+    for row in schedule_rows:
+        if row.item == "중도금" and row.loan_applied:
+            interim_loans.append((row.payment_date, row.payment_amount))
+    interim_loan_total = sum(amount for _, amount in interim_loans)
+    total_interest = (
+        0
+        if inputs.interest_payment_type == "무이자"
+        else calculate_interim_interest(interim_loans, inputs.balance_date, inputs.interim_loan_rate)
+    )
+
+    cash_rows: list[dict[str, Any]] = []
+    for row in sorted(schedule_rows, key=lambda item: (item.payment_date, item.item, item.round_no)):
+        loan_execution = row.payment_amount if row.item == "중도금" and row.loan_applied else 0
+        cash_rows.append(
+            {
+                "날짜": row.payment_date,
+                "항목": row.item,
+                "회차": row.round_no,
+                "납부액": row.payment_amount,
+                "대출실행액": loan_execution,
+                "대출상환액": 0,
+                "이자": 0,
+                "세금": 0,
+                "자금유입": 0,
+                "순현금필요액": row.payment_amount - loan_execution,
+                "비고": row.note,
+            }
+        )
+
+    if sale_stamp_buyer:
+        cash_rows.append(
+            {
+                "날짜": inputs.contract_date,
+                "항목": "분양계약 인지세",
+                "회차": 0,
+                "납부액": 0,
+                "대출실행액": 0,
+                "대출상환액": 0,
+                "이자": 0,
+                "세금": sale_stamp_buyer,
+                "자금유입": 0,
+                "순현금필요액": sale_stamp_buyer,
+                "비고": f"{sale_stamp_band} / 부담률 {format_rate(inputs.sale_stamp_buyer_share)}",
+            }
+        )
+
+    if inputs.interest_payment_type == "이자후불제" and total_interest:
+        cash_rows.append(
+            {
+                "날짜": inputs.balance_date,
+                "항목": "중도금대출 이자",
+                "회차": 0,
+                "납부액": 0,
+                "대출실행액": 0,
+                "대출상환액": 0,
+                "이자": total_interest,
+                "세금": 0,
+                "자금유입": 0,
+                "순현금필요액": total_interest,
+                "비고": "이자후불제: 실행일~잔금일 단리 일할 계산",
+            }
+        )
+    elif inputs.interest_payment_type == "매월납부" and total_interest:
+        cash_rows.append(
+            {
+                "날짜": inputs.balance_date,
+                "항목": "중도금대출 이자",
+                "회차": 0,
+                "납부액": 0,
+                "대출실행액": 0,
+                "대출상환액": 0,
+                "이자": total_interest,
+                "세금": 0,
+                "자금유입": 0,
+                "순현금필요액": total_interest,
+                "비고": "월납 총액 추정: 실행일~잔금일 단리 일할 합계",
+            }
+        )
+
+    if interim_loan_total:
+        cash_rows.append(
+            {
+                "날짜": inputs.balance_date,
+                "항목": "중도금대출 상환",
+                "회차": 0,
+                "납부액": 0,
+                "대출실행액": 0,
+                "대출상환액": interim_loan_total,
+                "이자": 0,
+                "세금": 0,
+                "자금유입": 0,
+                "순현금필요액": interim_loan_total,
+                "비고": "잔금일 중도금대출 원금 상환",
+            }
+        )
+
+    funding_total = inputs.balance_loan + inputs.other_funding
+    if funding_total:
+        cash_rows.append(
+            {
+                "날짜": inputs.balance_date,
+                "항목": "잔금대출/기타자금 유입",
+                "회차": 0,
+                "납부액": 0,
+                "대출실행액": 0,
+                "대출상환액": 0,
+                "이자": 0,
+                "세금": 0,
+                "자금유입": funding_total,
+                "순현금필요액": -funding_total,
+                "비고": "사용자 입력 자금 유입",
+            }
+        )
+
+    if acquisition_tax["total_tax"]:
+        cash_rows.append(
+            {
+                "날짜": inputs.acquisition_tax_payment_date,
+                "항목": "취득 관련 세금",
+                "회차": 0,
+                "납부액": 0,
+                "대출실행액": 0,
+                "대출상환액": 0,
+                "이자": 0,
+                "세금": acquisition_tax["total_tax"],
+                "자금유입": 0,
+                "순현금필요액": acquisition_tax["total_tax"],
+                "비고": (
+                    f"취득세 {format_won(acquisition_tax['net_acquisition_tax'])}, "
+                    f"지방교육세 {format_won(acquisition_tax['local_education_tax'])}, "
+                    f"농특세 {format_won(acquisition_tax['rural_special_tax'])}"
+                ),
+            }
+        )
+
+    cash_rows.sort(key=lambda row: (row["날짜"], row["항목"], row["회차"]))
+    cumulative = 0
+    max_cumulative = 0
+    for row in cash_rows:
+        cumulative += row["순현금필요액"]
+        max_cumulative = max(max_cumulative, cumulative)
+        row["누적현금필요액"] = cumulative
+        row["최대누적여부"] = cumulative == max_cumulative
+
+    contract_cash = sum(row["순현금필요액"] for row in cash_rows if row["날짜"] <= inputs.contract_date + timedelta(days=30))
+    interim_cash = sum(
+        row["순현금필요액"]
+        for row in cash_rows
+        if inputs.contract_date + timedelta(days=31) <= row["날짜"] < inputs.balance_date
+    )
+    move_in_cash = sum(row["순현금필요액"] for row in cash_rows if row["날짜"] == inputs.balance_date)
+
+    return {
+        "rows": cash_rows,
+        "acquisition_tax": acquisition_tax,
+        "sale_stamp_total": sale_stamp_total,
+        "sale_stamp_buyer": sale_stamp_buyer,
+        "interim_loan_total": interim_loan_total,
+        "total_interest": total_interest,
+        "summary": {
+            "max_cumulative_cash": max_cumulative,
+            "contract_cash": contract_cash,
+            "interim_cash": interim_cash,
+            "move_in_cash": move_in_cash,
+            "interim_loan_balance": interim_loan_total,
+            "total_interest": total_interest,
+            "acquisition_tax_total": acquisition_tax["total_tax"],
+        },
+    }
+
+
 def rows_to_csv(rows: list[dict[str, Any]]) -> str:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["구분", "항목", "금액", "표시금액", "비고", "근거"])
@@ -644,6 +1041,65 @@ def run_self_tests() -> None:
     assert round_bond_purchase(14_999) == 10_000
     assert round_bond_purchase(15_000) == 20_000
 
+    sub_base = SubscriptionInputs(
+        supply_price=1_000_000_000,
+        area_m2=Decimal("84"),
+        application_date=date(2026, 5, 1),
+        contract_date=date(2026, 6, 1),
+        balance_date=date(2029, 6, 1),
+        contract_rate=Decimal("0.10"),
+        interim_total_rate=Decimal("0.60"),
+        interim_count=6,
+        interim_loan_rounds=(1, 2, 3, 4),
+        interim_loan_rate=Decimal("0.045"),
+        interest_payment_type="이자후불제",
+        balcony_fee=0,
+        option_fee=0,
+        balance_loan=500_000_000,
+        other_funding=0,
+        acquisition_tax_base=1_000_000_000,
+        acquisition_tax_payment_date=date(2029, 7, 31),
+        over_85m2=False,
+        buyer_type="개인",
+        home_count_after="1주택",
+        regulated_area=False,
+        temporary_two_home=False,
+        acquisition_tax_relief=0,
+        relief_related_extra_tax=0,
+        sale_stamp_buyer_share=Decimal("0.5"),
+    )
+    sub_schedule = generate_subscription_schedule(sub_base)
+    supply_payment_total = sum(row.payment_amount for row in sub_schedule if row.item != "옵션비")
+    assert supply_payment_total == 1_000_000_000
+    sub_result = calculate_subscription_costs(sub_base, sub_schedule)
+    assert sub_result["interim_loan_total"] == 400_000_000
+    expected_interest = calculate_interim_interest(
+        [(row.payment_date, row.payment_amount) for row in sub_schedule if row.item == "중도금" and row.loan_applied],
+        sub_base.balance_date,
+        sub_base.interim_loan_rate,
+    )
+    assert sub_result["total_interest"] == expected_interest
+    assert sub_result["summary"]["move_in_cash"] == 200_000_000 + expected_interest
+
+    sub_20 = SubscriptionInputs(**{**sub_base.__dict__, "contract_rate": Decimal("0.20")})
+    sub_20_schedule = generate_subscription_schedule(sub_20)
+    contract_rows = [row for row in sub_20_schedule if row.item == "계약금"]
+    assert len(contract_rows) == 2
+    assert [row.payment_amount for row in contract_rows] == [100_000_000, 100_000_000]
+
+    purchase_tax_base = PurchaseInputs(
+        **{
+            **base.__dict__,
+            "purchase_price": sub_base.supply_price,
+            "tax_base": sub_base.acquisition_tax_base,
+            "over_85m2": sub_base.over_85m2,
+        }
+    )
+    assert (
+        calculate_acquisition_tax_components(sub_base)["total_tax"]
+        == calculate_acquisition_tax_components(purchase_tax_base)["total_tax"]
+    )
+
     print("self-test passed")
 
 
@@ -661,13 +1117,7 @@ def format_compact_won(value: int | Decimal) -> str:
     return f"{sign}{numeric:,}원"
 
 
-def render_summary_cards(st: Any, summary: dict[str, int]) -> None:
-    cards = [
-        ("총 필요 현금", summary["cash_needed"], "매매가 - 반영 대출금 + 전체 부대비용"),
-        ("취득 관련 세금", summary["tax_total"], "취득세, 지방교육세, 농특세, 인지세"),
-        ("거래/등기비", summary["transaction_total"], "중개보수, 채권 할인비용, 법무사 비용"),
-        ("대출 관련 비용", summary["loan_total"], "인지세, 근저당 세금, 저당권 채권 비용"),
-    ]
+def render_custom_summary_cards(st: Any, cards: list[tuple[str, int, str]]) -> None:
     html = ['<div class="summary-grid">']
     for title, amount, note in cards:
         html.append(
@@ -680,6 +1130,18 @@ def render_summary_cards(st: Any, summary: dict[str, int]) -> None:
         )
     html.append("</div>")
     st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def render_summary_cards(st: Any, summary: dict[str, int]) -> None:
+    render_custom_summary_cards(
+        st,
+        [
+            ("총 필요 현금", summary["cash_needed"], "매매가 - 반영 대출금 + 전체 부대비용"),
+            ("취득 관련 세금", summary["tax_total"], "취득세, 지방교육세, 농특세, 인지세"),
+            ("거래/등기비", summary["transaction_total"], "중개보수, 채권 할인비용, 법무사 비용"),
+            ("대출 관련 비용", summary["loan_total"], "인지세, 근저당 세금, 저당권 채권 비용"),
+        ],
+    )
 
 
 def render_amount_strip(st: Any, title: str, pairs: list[tuple[str, int | str]]) -> None:
@@ -701,15 +1163,7 @@ def render_formula_panel(st: Any, title: str, items: list[str]) -> None:
     st.markdown("".join(html), unsafe_allow_html=True)
 
 
-def run_app() -> None:
-    import streamlit as st
-
-    st.set_page_config(
-        page_title="서울 주택 구매비용 계산기",
-        page_icon=None,
-        layout="wide",
-        initial_sidebar_state="collapsed",
-    )
+def render_app_shell(st: Any) -> None:
     st.markdown(
         """
         <style>
@@ -876,7 +1330,7 @@ def run_app() -> None:
         '<div class="app-eyebrow">Seoul Home Purchase Cost</div>'
         '<h1 class="app-title">서울 주택 구매비용 계산기</h1>'
         '<p class="app-subtitle">'
-        "취득세, 중개보수, 국민주택채권, 대출 근저당 비용을 한 화면에서 조정하고 항목별로 확인합니다."
+        "매매와 청약 시점별 현금흐름, 취득세, 대출 비용을 한 화면에서 조정하고 항목별로 확인합니다."
         "</p>"
         '<div class="notice">'
         "감면은 자동 판정하지 않습니다. 입력한 취득세 감면액은 취득세 본세에서만 단순 차감하며, "
@@ -885,7 +1339,9 @@ def run_app() -> None:
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="section-title">입력</div>', unsafe_allow_html=True)
+
+def render_purchase_calculator(st: Any) -> None:
+    st.markdown('<div class="section-title">매매 입력</div>', unsafe_allow_html=True)
     input_tab, cost_tab, loan_tab = st.tabs(["거래와 세금", "중개·채권·기타", "대출"])
 
     with input_tab:
@@ -1137,7 +1593,7 @@ def run_app() -> None:
         ]
         st.dataframe(
             display_rows,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=430,
             column_config={
@@ -1248,6 +1704,349 @@ def run_app() -> None:
             "[주택도시기금법 시행령 별표](https://www.law.go.kr/LSW/flDownload.do?bylClsCd=110201&flSeq=33335725&gubun=)\n\n"
             "이 계산기는 사전 검토용입니다. 실제 신고·납부 전에는 관할 구청, 세무사, 법무사, 금융기관 고지액을 확인하세요."
         )
+
+
+def render_subscription_calculator(st: Any) -> None:
+    st.markdown('<div class="section-title">청약 입력</div>', unsafe_allow_html=True)
+    st.caption("모집공고별 실제 납부조건이 우선입니다. 자동 스케줄은 일반적인 계약금/중도금/잔금 구조를 바탕으로 만든 초안입니다.")
+
+    basic_tab, schedule_tab, loan_tab, tax_tab = st.tabs(["기본정보", "스케줄", "대출", "세금·옵션"])
+
+    with basic_tab:
+        basic_col1, basic_col2, basic_col3 = st.columns(3, gap="large")
+        with basic_col1:
+            supply_price = st.number_input(
+                "분양가",
+                min_value=0,
+                value=1_200_000_000,
+                step=10_000_000,
+                format="%d",
+                key="sub_supply_price",
+            )
+            area_m2 = st.number_input(
+                "전용면적(㎡)",
+                min_value=1.0,
+                value=84.0,
+                step=1.0,
+                format="%.2f",
+                key="sub_area_m2",
+            )
+        with basic_col2:
+            today = date.today()
+            application_date = st.date_input("청약/당첨 기준일", value=today, key="sub_application_date")
+            default_contract_date = application_date + timedelta(days=30)
+            contract_date = st.date_input("계약일", value=default_contract_date, key="sub_contract_date")
+            balance_date = st.date_input("입주/잔금일", value=add_months(contract_date, 30), key="sub_balance_date")
+        with basic_col3:
+            contract_rate_choice = st.selectbox("계약금 비율", ["10%", "20%"], index=0, key="sub_contract_rate")
+            interim_count = st.number_input("중도금 회차", min_value=1, max_value=10, value=6, step=1, key="sub_interim_count")
+            interim_total_percent = st.number_input(
+                "중도금 총 비율(%)",
+                min_value=0.0,
+                max_value=90.0,
+                value=60.0,
+                step=5.0,
+                format="%.1f",
+                key="sub_interim_total_percent",
+            )
+            contract_rate = Decimal("0.20") if contract_rate_choice == "20%" else Decimal("0.10")
+            balance_rate = Decimal("1") - contract_rate - Decimal(str(interim_total_percent)) / Decimal("100")
+            st.caption(f"잔금 추정 비율: {format_rate(max(balance_rate, Decimal('0')))}")
+
+    with loan_tab:
+        loan_col1, loan_col2, loan_col3 = st.columns(3, gap="large")
+        round_options = list(range(1, int(interim_count) + 1))
+        with loan_col1:
+            default_rounds = [round_no for round_no in round_options if round_no <= min(4, int(interim_count))]
+            interim_loan_rounds = st.multiselect(
+                "중도금대출 적용 회차",
+                round_options,
+                default=default_rounds,
+                key="sub_interim_loan_rounds",
+            )
+            interim_loan_rate_percent = st.number_input(
+                "중도금대출 연이율(%)",
+                min_value=0.0,
+                max_value=30.0,
+                value=4.5,
+                step=0.1,
+                format="%.2f",
+                key="sub_interim_loan_rate",
+            )
+        with loan_col2:
+            interest_payment_type = st.selectbox(
+                "중도금대출 이자 방식",
+                ["이자후불제", "무이자", "매월납부"],
+                index=0,
+                key="sub_interest_payment_type",
+            )
+            balance_loan = st.number_input(
+                "잔금대출 가능액",
+                min_value=0,
+                value=500_000_000,
+                step=10_000_000,
+                format="%d",
+                key="sub_balance_loan",
+            )
+        with loan_col3:
+            other_funding = st.number_input(
+                "기타 자금 유입",
+                min_value=0,
+                value=0,
+                step=10_000_000,
+                format="%d",
+                key="sub_other_funding",
+                help="예금 인출, 가족 차입, 신용대출 등 잔금일에 투입 가능한 자금을 넣습니다.",
+            )
+            st.caption("LTV/DSR은 자동 판정하지 않습니다. 실제 승인 가능액을 입력하세요.")
+
+    with tax_tab:
+        tax_col1, tax_col2, tax_col3 = st.columns(3, gap="large")
+        default_balcony_fee = won(Decimal(str(area_m2)) * Decimal("300000"))
+        default_option_fee = won(Decimal(str(area_m2)) * Decimal("150000"))
+        with tax_col1:
+            balcony_fee = st.number_input(
+                "발코니 확장비",
+                min_value=0,
+                value=default_balcony_fee,
+                step=1_000_000,
+                format="%d",
+                key="sub_balcony_fee",
+            )
+            option_fee = st.number_input(
+                "유상 옵션비",
+                min_value=0,
+                value=default_option_fee,
+                step=1_000_000,
+                format="%d",
+                key="sub_option_fee",
+            )
+            tax_base_default = int(supply_price) + int(balcony_fee) + int(option_fee)
+            acquisition_tax_base = st.number_input(
+                "취득세 과세표준",
+                min_value=0,
+                value=tax_base_default,
+                step=10_000_000,
+                format="%d",
+                key="sub_acquisition_tax_base",
+            )
+        with tax_col2:
+            over_85m2 = st.checkbox("85㎡ 초과로 계산", value=float(area_m2) > 85.0, key="sub_over_85m2")
+            buyer_type = st.radio("취득자", ["개인", "법인"], horizontal=True, key="sub_buyer_type")
+            home_count_after = st.selectbox(
+                "취득 후 주택 수",
+                ["1주택", "2주택", "3주택", "4주택 이상"],
+                key="sub_home_count_after",
+            )
+            regulated_area = st.checkbox("조정대상지역으로 계산", value=False, key="sub_regulated_area")
+            temporary_two_home = st.checkbox(
+                "일시적 2주택으로 기본세율 적용",
+                value=False,
+                disabled=buyer_type == "법인" or home_count_after != "2주택",
+                key="sub_temporary_two_home",
+            )
+        with tax_col3:
+            acquisition_tax_relief = st.number_input(
+                "취득세 감면액",
+                min_value=0,
+                value=0,
+                step=100_000,
+                format="%d",
+                key="sub_acquisition_tax_relief",
+            )
+            relief_related_extra_tax = st.number_input(
+                "감면 관련 추가 농특세/기타 세액",
+                min_value=0,
+                value=0,
+                step=100_000,
+                format="%d",
+                key="sub_relief_related_extra_tax",
+            )
+            acquisition_tax_payment_date = st.date_input(
+                "취득세 납부 예정일",
+                value=balance_date + timedelta(days=60),
+                key="sub_acquisition_tax_payment_date",
+            )
+            sale_stamp_buyer_share_percent = st.number_input(
+                "분양계약 인지세 부담률(%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=50.0,
+                step=5.0,
+                format="%.1f",
+                key="sub_sale_stamp_share",
+            )
+
+    subscription_inputs = SubscriptionInputs(
+        supply_price=int(supply_price),
+        area_m2=Decimal(str(area_m2)),
+        application_date=application_date,
+        contract_date=contract_date,
+        balance_date=balance_date,
+        contract_rate=Decimal("0.20") if contract_rate_choice == "20%" else Decimal("0.10"),
+        interim_total_rate=Decimal(str(interim_total_percent)) / Decimal("100"),
+        interim_count=int(interim_count),
+        interim_loan_rounds=tuple(sorted(int(round_no) for round_no in interim_loan_rounds)),
+        interim_loan_rate=Decimal(str(interim_loan_rate_percent)) / Decimal("100"),
+        interest_payment_type=interest_payment_type,
+        balcony_fee=int(balcony_fee),
+        option_fee=int(option_fee),
+        balance_loan=int(balance_loan),
+        other_funding=int(other_funding),
+        acquisition_tax_base=int(acquisition_tax_base),
+        acquisition_tax_payment_date=acquisition_tax_payment_date,
+        over_85m2=over_85m2,
+        buyer_type=buyer_type,
+        home_count_after=home_count_after,
+        regulated_area=regulated_area,
+        temporary_two_home=temporary_two_home and buyer_type != "법인" and home_count_after == "2주택",
+        acquisition_tax_relief=int(acquisition_tax_relief),
+        relief_related_extra_tax=int(relief_related_extra_tax),
+        sale_stamp_buyer_share=Decimal(str(sale_stamp_buyer_share_percent)) / Decimal("100"),
+    )
+
+    with schedule_tab:
+        default_schedule_rows = subscription_schedule_to_editor_rows(generate_subscription_schedule(subscription_inputs))
+        schedule_key = (
+            f"sub_schedule_editor_{subscription_inputs.supply_price}_{subscription_inputs.contract_date.isoformat()}_"
+            f"{subscription_inputs.balance_date.isoformat()}_{format_rate(subscription_inputs.contract_rate)}_"
+            f"{subscription_inputs.interim_count}_{format_rate(subscription_inputs.interim_total_rate)}_"
+            f"{'-'.join(str(round_no) for round_no in subscription_inputs.interim_loan_rounds)}_"
+            f"{subscription_inputs.balcony_fee}_{subscription_inputs.option_fee}"
+        )
+        edited_schedule = st.data_editor(
+            default_schedule_rows,
+            width="stretch",
+            hide_index=True,
+            num_rows="dynamic",
+            key=schedule_key,
+            column_config={
+                "납부일": st.column_config.DateColumn(required=True),
+                "항목": st.column_config.SelectboxColumn(options=["계약금", "중도금", "잔금", "옵션비"], required=True),
+                "회차": st.column_config.NumberColumn(min_value=0, step=1),
+                "납부액": st.column_config.NumberColumn(min_value=0, step=1_000_000, format="%d"),
+                "중도금대출": st.column_config.CheckboxColumn(),
+                "비고": st.column_config.TextColumn(width="large"),
+            },
+        )
+        st.caption("중도금대출 체크는 항목이 `중도금`인 행에만 현금흐름 계산에 반영됩니다.")
+
+    schedule_rows = normalize_subscription_schedule(edited_schedule)
+    subscription_result = calculate_subscription_costs(subscription_inputs, schedule_rows)
+    summary = subscription_result["summary"]
+
+    st.markdown('<div class="section-title">청약 결과</div>', unsafe_allow_html=True)
+    render_custom_summary_cards(
+        st,
+        [
+            ("최대 누적 자기현금", summary["max_cumulative_cash"], "기간 중 누적 현금 필요액의 최대치"),
+            ("계약시 필요 현금", summary["contract_cash"], "계약일~계약 후 30일 현금"),
+            ("중도금 기간 현금", summary["interim_cash"], "중도금 자납분과 월납/후불 이자 추정"),
+            ("입주시 필요 현금", summary["move_in_cash"], "잔금, 대출상환, 자금유입 반영"),
+            ("중도금대출 잔액", summary["interim_loan_balance"], "잔금일 상환 대상 원금"),
+            ("대출이자 총액", summary["total_interest"], "중도금대출 단리 일할 추정"),
+            ("취득 관련 세금", summary["acquisition_tax_total"], "취득세, 지방교육세, 농특세"),
+        ],
+    )
+    render_amount_strip(
+        st,
+        "청약 핵심값",
+        [
+            ("분양가", subscription_inputs.supply_price),
+            ("발코니/옵션", subscription_inputs.balcony_fee + subscription_inputs.option_fee),
+            ("잔금대출", subscription_inputs.balance_loan),
+            ("기타자금", subscription_inputs.other_funding),
+        ],
+    )
+
+    result_tab, formula_tab, source_tab = st.tabs(["현금흐름", "산식", "근거"])
+    with result_tab:
+        display_rows = []
+        for row in subscription_result["rows"]:
+            display_rows.append(
+                {
+                    "날짜": row["날짜"].isoformat(),
+                    "항목": row["항목"],
+                    "회차": row["회차"],
+                    "납부액": format_won(row["납부액"]),
+                    "대출실행액": format_won(row["대출실행액"]),
+                    "대출상환액": format_won(row["대출상환액"]),
+                    "이자": format_won(row["이자"]),
+                    "세금": format_won(row["세금"]),
+                    "자금유입": format_won(row["자금유입"]),
+                    "순현금필요액": format_won(row["순현금필요액"]),
+                    "누적현금필요액": format_won(row["누적현금필요액"]),
+                    "비고": row["비고"],
+                }
+            )
+        st.dataframe(display_rows, width="stretch", hide_index=True, height=500)
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=list(display_rows[0].keys()) if display_rows else [])
+        if display_rows:
+            writer.writeheader()
+            writer.writerows(display_rows)
+        st.download_button(
+            "CSV 다운로드",
+            data=output.getvalue().encode("utf-8-sig"),
+            file_name="subscription_cashflow.csv",
+            mime="text/csv",
+        )
+
+    with formula_tab:
+        render_formula_panel(
+            st,
+            "스케줄",
+            [
+                "계약금 10%는 계약일 1회, 20%는 계약일과 계약일+30일에 10%씩 배치합니다.",
+                "중도금은 계약일 이후부터 잔금일 6개월 전까지 균등 배치하고, 기간이 부족하면 잔금 전까지 균등 배치합니다.",
+                "발코니/옵션비는 계약일 10%, 잔금일 90% 기본값으로 생성합니다.",
+            ],
+        )
+        render_formula_panel(
+            st,
+            "대출과 현금",
+            [
+                "중도금대출 체크 회차는 해당 중도금 납부액만큼 대출실행액으로 차감합니다.",
+                "중도금대출 원금은 잔금일 상환액으로 반영합니다.",
+                "잔금대출과 기타자금은 잔금일 자금유입으로 한 번만 차감합니다.",
+                "이자는 <code>대출원금 x 연이율 x 경과일 / 365</code> 단리 일할 계산입니다.",
+            ],
+        )
+        render_formula_panel(
+            st,
+            "세금",
+            [
+                "취득세 과세표준 기본값은 <code>분양가 + 발코니확장비 + 옵션비</code>입니다.",
+                "취득세, 지방교육세, 농어촌특별세는 매매 계산기와 같은 엔진을 재사용합니다.",
+                "분양계약 인지세는 기존 인지세 구간표와 사용자 부담률을 적용합니다.",
+            ],
+        )
+
+    with source_tab:
+        st.markdown(
+            "- 입주금 구분 및 납부 구조: "
+            "[주택공급에 관한 규칙 제60조](https://www.law.go.kr/LSW/lsLawLinkInfo.do?chrClsCd=010202&lsJoLnkSeq=1000407010)\n"
+            "- 취득세·인지세·지방교육세·농어촌특별세 개요: "
+            "[찾기쉬운 생활법령정보](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=3&cnpClsNo=2&csmSeq=534&menuType=cnpcls&popMenu=ov)\n\n"
+            "청약 자격, 전매제한, 실거주의무, 중도금대출 보증 가능 여부, LTV/DSR 한도는 자동판정하지 않습니다."
+        )
+
+
+def run_app() -> None:
+    import streamlit as st
+
+    st.set_page_config(
+        page_title="서울 주택 구매비용 계산기",
+        page_icon=None,
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+    render_app_shell(st)
+    purchase_tab, subscription_tab = st.tabs(["매매 계산", "청약 계산"])
+    with purchase_tab:
+        render_purchase_calculator(st)
+    with subscription_tab:
+        render_subscription_calculator(st)
 
 
 if __name__ == "__main__":
