@@ -5,6 +5,7 @@ import io
 import sys
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+from html import escape
 from typing import Any
 
 
@@ -646,12 +647,52 @@ def run_self_tests() -> None:
     print("self-test passed")
 
 
-def render_metric_row(st: Any, summary: dict[str, int]) -> None:
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("총 필요 현금", format_won(summary["cash_needed"]))
-    col2.metric("취득 관련 세금", format_won(summary["tax_total"]))
-    col3.metric("거래/등기비", format_won(summary["transaction_total"]))
-    col4.metric("대출 관련 비용", format_won(summary["loan_total"]))
+def format_compact_won(value: int | Decimal) -> str:
+    numeric = abs(won(value))
+    sign = "-" if won(value) < 0 else ""
+    if numeric >= 100_000_000:
+        amount = (Decimal(numeric) / EOK).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        text = f"{amount:,.2f}".rstrip("0").rstrip(".")
+        return f"{sign}{text}억원"
+    if numeric >= 10_000:
+        amount = (Decimal(numeric) / Decimal("10000")).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        text = f"{amount:,.1f}".rstrip("0").rstrip(".")
+        return f"{sign}{text}만원"
+    return f"{sign}{numeric:,}원"
+
+
+def render_summary_cards(st: Any, summary: dict[str, int]) -> None:
+    cards = [
+        ("총 필요 현금", summary["cash_needed"], "매매가 - 반영 대출금 + 전체 부대비용"),
+        ("취득 관련 세금", summary["tax_total"], "취득세, 지방교육세, 농특세, 인지세"),
+        ("거래/등기비", summary["transaction_total"], "중개보수, 채권 할인비용, 법무사 비용"),
+        ("대출 관련 비용", summary["loan_total"], "인지세, 근저당 세금, 저당권 채권 비용"),
+    ]
+    html = ['<div class="summary-grid">']
+    for title, amount, note in cards:
+        html.append(
+            f"""
+            <div class="summary-card">
+                <div class="summary-title">{escape(title)}</div>
+                <div class="summary-value">{escape(format_compact_won(amount))}</div>
+                <div class="summary-full">{escape(format_won(amount))}</div>
+                <div class="summary-note">{escape(note)}</div>
+            </div>
+            """
+        )
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def render_amount_strip(st: Any, title: str, pairs: list[tuple[str, int | str]]) -> None:
+    html = [f'<div class="amount-strip"><span class="strip-title">{escape(title)}</span>']
+    for label, value in pairs:
+        display = format_won(value) if isinstance(value, int) else value
+        html.append(
+            f'<span class="strip-item"><span>{escape(label)}</span><strong>{escape(display)}</strong></span>'
+        )
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
 
 
 def run_app() -> None:
