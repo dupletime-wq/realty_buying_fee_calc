@@ -708,29 +708,154 @@ def run_app() -> None:
         """
         <style>
         .block-container {
-            max-width: 1260px;
-            padding-top: 1.7rem;
+            max-width: 1440px;
+            padding-top: 1.25rem;
             padding-bottom: 3rem;
         }
-        h1, h2, h3 {
+        h1, h2, h3, p, div, label {
             letter-spacing: 0;
         }
-        div[data-testid="stMetric"] {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 14px 16px;
+        .app-eyebrow {
+            color: #0f766e;
+            font-size: 0.86rem;
+            font-weight: 760;
+            margin-bottom: 0.2rem;
         }
-        div[data-testid="stMetric"] label {
-            color: #475569;
+        .app-title {
+            color: #111827;
+            font-size: 2.25rem;
+            font-weight: 820;
+            line-height: 1.18;
+            margin: 0;
+        }
+        .app-subtitle {
+            color: #6b7280;
+            font-size: 1rem;
+            line-height: 1.55;
+            margin: 0.65rem 0 1rem 0;
+            max-width: 960px;
         }
         .notice {
-            border-left: 4px solid #0f766e;
+            border: 1px solid #b7e4dc;
+            border-left: 5px solid #0f766e;
             background: #f0fdfa;
-            padding: 12px 14px;
-            border-radius: 6px;
+            padding: 0.9rem 1rem;
+            border-radius: 8px;
             color: #134e4a;
-            margin: 0.5rem 0 1rem 0;
+            line-height: 1.55;
+            margin: 0.6rem 0 1.15rem 0;
+            overflow-wrap: anywhere;
+        }
+        .section-title {
+            margin-top: 1.15rem;
+            margin-bottom: 0.55rem;
+            font-size: 1.35rem;
+            line-height: 1.3;
+            font-weight: 800;
+            color: #111827;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 0.85rem;
+            margin: 0.25rem 0 0.9rem 0;
+        }
+        .summary-card {
+            min-height: 142px;
+            background: #ffffff;
+            border: 1px solid #dbe3ea;
+            border-radius: 8px;
+            padding: 1rem 1.05rem;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            overflow: visible;
+        }
+        .summary-title {
+            color: #475569;
+            font-size: 0.92rem;
+            font-weight: 720;
+            margin-bottom: 0.45rem;
+        }
+        .summary-value {
+            color: #111827;
+            font-size: 1.72rem;
+            font-weight: 820;
+            line-height: 1.18;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        .summary-full {
+            color: #0f766e;
+            font-size: 0.9rem;
+            font-weight: 720;
+            line-height: 1.35;
+            margin-top: 0.38rem;
+            overflow-wrap: anywhere;
+        }
+        .summary-note {
+            color: #6b7280;
+            font-size: 0.84rem;
+            line-height: 1.35;
+            margin-top: 0.5rem;
+        }
+        .amount-strip {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.55rem;
+            border: 1px solid #e5e7eb;
+            background: #f8fafc;
+            border-radius: 8px;
+            padding: 0.7rem 0.8rem;
+            margin: 0.3rem 0 1rem 0;
+        }
+        .strip-title {
+            color: #111827;
+            font-weight: 800;
+            margin-right: 0.25rem;
+        }
+        .strip-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            color: #64748b;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 999px;
+            padding: 0.34rem 0.65rem;
+            white-space: normal;
+        }
+        .strip-item strong {
+            color: #111827;
+            overflow-wrap: anywhere;
+        }
+        .formula-panel {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            background: #ffffff;
+            margin-bottom: 0.75rem;
+        }
+        .formula-panel h4 {
+            margin: 0 0 0.55rem 0;
+            font-size: 1.05rem;
+            color: #111827;
+        }
+        .formula-panel ul {
+            margin-bottom: 0;
+        }
+        .formula-panel code {
+            color: #047857;
+            background: #ecfdf5;
+            border-radius: 5px;
+            padding: 0.12rem 0.28rem;
+            white-space: normal;
+        }
+        div[data-testid="stNumberInput"] input {
+            font-variant-numeric: tabular-nums;
+        }
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
         }
         .subtle {
             color: #64748b;
@@ -741,12 +866,13 @@ def run_app() -> None:
         unsafe_allow_html=True,
     )
 
-    st.title("서울 주택 구매비용 계산기")
-    st.caption(
-        "서울 소재 주택 매매 시 필요한 취득세, 중개보수, 국민주택채권, 대출 근저당 비용을 한 번에 계산합니다."
-    )
     st.markdown(
         """
+        <div class="app-eyebrow">Seoul Home Purchase Cost</div>
+        <h1 class="app-title">서울 주택 구매비용 계산기</h1>
+        <p class="app-subtitle">
+        취득세, 중개보수, 국민주택채권, 대출 근저당 비용을 한 화면에서 조정하고 항목별로 확인합니다.
+        </p>
         <div class="notice">
         감면은 자동 판정하지 않습니다. 입력한 취득세 감면액은 취득세 본세에서만 단순 차감하며,
         지방교육세 비례 감면 또는 감면분 농어촌특별세 부과는 별도 입력으로 반영하세요.
@@ -755,11 +881,12 @@ def run_app() -> None:
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns([0.92, 1.38], gap="large")
+    st.markdown('<div class="section-title">입력</div>', unsafe_allow_html=True)
+    input_tab, cost_tab, loan_tab = st.tabs(["거래와 세금", "중개·채권·기타", "대출"])
 
-    with left:
-        st.subheader("입력")
-        with st.expander("거래 기본정보", expanded=True):
+    with input_tab:
+        trade_col1, trade_col2, trade_col3 = st.columns(3, gap="large")
+        with trade_col1:
             purchase_price = st.number_input(
                 "매매가",
                 min_value=0,
@@ -780,6 +907,7 @@ def run_app() -> None:
                     step=10_000_000,
                     format="%d",
                 )
+        with trade_col2:
             estimated_standard_value = won(Decimal(int(purchase_price)) * Decimal("0.70"))
             bond_standard_value = st.number_input(
                 "국민주택채권 기준 시가표준액",
@@ -795,8 +923,7 @@ def run_app() -> None:
                 horizontal=True,
                 help="농어촌특별세 적용 여부에 사용됩니다.",
             )
-
-        with st.expander("취득세 판단", expanded=True):
+        with trade_col3:
             buyer_type = st.radio("취득자", ["개인", "법인"], horizontal=True)
             home_count_after = st.selectbox(
                 "취득 후 주택 수",
@@ -814,6 +941,8 @@ def run_app() -> None:
                 disabled=buyer_type == "법인" or home_count_after != "2주택",
                 help="요건 충족 여부는 사용자가 별도로 확인해야 합니다.",
             )
+        relief_col1, relief_col2 = st.columns(2, gap="large")
+        with relief_col1:
             acquisition_tax_relief = st.number_input(
                 "취득세 감면액",
                 min_value=0,
@@ -822,6 +951,7 @@ def run_app() -> None:
                 format="%d",
                 help="취득세 본세에서만 단순 차감합니다.",
             )
+        with relief_col2:
             relief_related_extra_tax = st.number_input(
                 "감면 관련 추가 농특세/기타 세액",
                 min_value=0,
@@ -831,12 +961,14 @@ def run_app() -> None:
                 help="감면분 농특세 등 별도 확인된 추가 세액을 입력합니다.",
             )
 
-        with st.expander("중개보수 및 채권", expanded=True):
-            brokerage_band = find_band(int(purchase_price), SEOUL_HOME_BROKERAGE_BANDS)
-            st.caption(
-                f"서울 주택 매매 중개보수 상한: {format_rate(brokerage_band.rate)}"
-                + (f", 한도 {format_won(brokerage_band.cap)}" if brokerage_band.cap else "")
-            )
+    with cost_tab:
+        brokerage_band = find_band(int(purchase_price), SEOUL_HOME_BROKERAGE_BANDS)
+        st.caption(
+            f"서울 주택 매매 중개보수 상한: {format_rate(brokerage_band.rate)}"
+            + (f", 한도 {format_won(brokerage_band.cap)}" if brokerage_band.cap else "")
+        )
+        cost_col1, cost_col2, cost_col3 = st.columns(3, gap="large")
+        with cost_col1:
             max_brokerage_percent = float(brokerage_band.rate * Decimal("100"))
             brokerage_rate_percent = st.number_input(
                 "실제 적용 중개보수율(%)",
@@ -852,6 +984,7 @@ def run_app() -> None:
                 index=2,
                 help="중개사의 과세 유형에 맞춰 선택하세요.",
             )
+        with cost_col2:
             bond_discount_percent = st.number_input(
                 "국민주택채권 즉시매도 할인율(%)",
                 min_value=0.0,
@@ -869,55 +1002,7 @@ def run_app() -> None:
                 step=5.0,
                 format="%.1f",
             )
-
-        with st.expander("대출 및 근저당", expanded=False):
-            loan_enabled = st.checkbox("대출 있음", value=True)
-            if loan_enabled:
-                default_loan = min(700_000_000, int(purchase_price))
-                loan_amount = st.number_input(
-                    "대출금",
-                    min_value=0,
-                    value=default_loan,
-                    step=10_000_000,
-                    format="%d",
-                )
-                collateral_ratio_percent = st.number_input(
-                    "채권최고액 비율(%)",
-                    min_value=0.0,
-                    value=120.0,
-                    step=5.0,
-                    format="%.1f",
-                )
-                loan_stamp_buyer_share_percent = st.number_input(
-                    "대출 인지세 부담률(%)",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=50.0,
-                    step=5.0,
-                    format="%.1f",
-                )
-                mortgage_registration_fee = st.number_input(
-                    "근저당 등기신청수수료",
-                    min_value=0,
-                    value=DEFAULT_MORTGAGE_REGISTRATION_FEE,
-                    step=1_000,
-                    format="%d",
-                )
-                loan_other_fee = st.number_input(
-                    "보증료/감정료/기타 대출 비용",
-                    min_value=0,
-                    value=0,
-                    step=10_000,
-                    format="%d",
-                )
-            else:
-                loan_amount = 0
-                collateral_ratio_percent = 120.0
-                loan_stamp_buyer_share_percent = 50.0
-                mortgage_registration_fee = 0
-                loan_other_fee = 0
-
-        with st.expander("법무사 및 기타", expanded=False):
+        with cost_col3:
             ownership_registration_fee = st.number_input(
                 "소유권 이전 등기신청수수료",
                 min_value=0,
@@ -940,6 +1025,59 @@ def run_app() -> None:
                 step=10_000,
                 format="%d",
             )
+
+    with loan_tab:
+        loan_enabled = st.checkbox("대출 있음", value=True)
+        if loan_enabled:
+            loan_col1, loan_col2, loan_col3 = st.columns(3, gap="large")
+            with loan_col1:
+                default_loan = min(700_000_000, int(purchase_price))
+                loan_amount = st.number_input(
+                    "대출금",
+                    min_value=0,
+                    value=default_loan,
+                    step=10_000_000,
+                    format="%d",
+                )
+                collateral_ratio_percent = st.number_input(
+                    "채권최고액 비율(%)",
+                    min_value=0.0,
+                    value=120.0,
+                    step=5.0,
+                    format="%.1f",
+                )
+            with loan_col2:
+                loan_stamp_buyer_share_percent = st.number_input(
+                    "대출 인지세 부담률(%)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=50.0,
+                    step=5.0,
+                    format="%.1f",
+                )
+                mortgage_registration_fee = st.number_input(
+                    "근저당 등기신청수수료",
+                    min_value=0,
+                    value=DEFAULT_MORTGAGE_REGISTRATION_FEE,
+                    step=1_000,
+                    format="%d",
+                )
+            with loan_col3:
+                loan_other_fee = st.number_input(
+                    "보증료/감정료/기타 대출 비용",
+                    min_value=0,
+                    value=0,
+                    step=10_000,
+                    format="%d",
+                )
+                st.caption("은행 견적서상 보증료, 감정료, 채권 할인율을 실제 값으로 바꾸면 결과 정확도가 올라갑니다.")
+        else:
+            loan_amount = 0
+            collateral_ratio_percent = 120.0
+            loan_stamp_buyer_share_percent = 50.0
+            mortgage_registration_fee = 0
+            loan_other_fee = 0
+            st.caption("대출 관련 인지세, 근저당 세금, 저당권 국민주택채권 비용은 0원으로 계산합니다.")
 
     inputs = PurchaseInputs(
         purchase_price=int(purchase_price),
@@ -970,98 +1108,131 @@ def run_app() -> None:
     rows = result["rows"]
     summary = result["summary"]
 
-    with right:
-        st.subheader("결과")
-        render_metric_row(st, summary)
-        st.caption(
-            f"총 비용 {format_won(summary['total_cost'])} + 매매가 {format_won(inputs.purchase_price)}"
-            f" - 반영 대출금 {format_won(summary['effective_loan'])}"
+    st.markdown('<div class="section-title">결과</div>', unsafe_allow_html=True)
+    render_summary_cards(st, summary)
+    render_amount_strip(
+        st,
+        "총 필요 현금 구성",
+        [
+            ("매매가", inputs.purchase_price),
+            ("전체 부대비용", summary["total_cost"]),
+            ("반영 대출금", -summary["effective_loan"]),
+        ],
+    )
+
+    tab_breakdown, tab_formula, tab_sources = st.tabs(["세부내역", "핵심 산식", "법령·근거"])
+    with tab_breakdown:
+        display_rows = [
+            {
+                "구분": row["구분"],
+                "항목": row["항목"],
+                "금액": row["표시금액"],
+                "비고": row["비고"],
+            }
+            for row in rows
+        ]
+        st.dataframe(
+            display_rows,
+            use_container_width=True,
+            hide_index=True,
+            height=430,
+            column_config={
+                "구분": st.column_config.TextColumn(width="small"),
+                "항목": st.column_config.TextColumn(width="medium"),
+                "금액": st.column_config.TextColumn(width="medium"),
+                "비고": st.column_config.TextColumn(width="large"),
+            },
+        )
+        csv_data = rows_to_csv(rows).encode("utf-8-sig")
+        st.download_button(
+            "CSV 다운로드",
+            data=csv_data,
+            file_name="seoul_home_purchase_cost_breakdown.csv",
+            mime="text/csv",
         )
 
-        tab_breakdown, tab_formula, tab_sources = st.tabs(["Breakdown", "산식", "근거"])
-        with tab_breakdown:
-            display_rows = [
-                {
-                    "구분": row["구분"],
-                    "항목": row["항목"],
-                    "금액": row["표시금액"],
-                    "비고": row["비고"],
-                }
-                for row in rows
-            ]
-            st.dataframe(display_rows, use_container_width=True, hide_index=True)
-            csv_data = rows_to_csv(rows).encode("utf-8-sig")
-            st.download_button(
-                "CSV 다운로드",
-                data=csv_data,
-                file_name="seoul_home_purchase_cost_breakdown.csv",
-                mime="text/csv",
+        st.markdown('<div class="section-title">주요 계산값</div>', unsafe_allow_html=True)
+        render_amount_strip(
+            st,
+            "세금",
+            [
+                ("적용 취득세율", format_rate(result["profile"]["rate"])),
+                ("취득세 감면 후 본세", result["net_acquisition_tax"]),
+                ("매매 인지세 부담분", result["sale_stamp_buyer"]),
+            ],
+        )
+        render_amount_strip(
+            st,
+            "채권·중개",
+            [
+                ("소유권 이전 채권 매입액", result["ownership_bond"]["rounded_purchase"]),
+                ("중개보수 합계", result["brokerage"]["total"]),
+                ("채권 할인율", format_rate(inputs.bond_discount_rate)),
+            ],
+        )
+        if inputs.loan_enabled and inputs.loan_amount > 0:
+            render_amount_strip(
+                st,
+                "대출",
+                [
+                    ("채권최고액", result["mortgage"]["collateral_amount"]),
+                    ("저당권 채권 매입액", result["mortgage"]["bond_rounded_purchase"]),
+                    ("대출 인지세 부담분", result["mortgage"]["loan_stamp_buyer"]),
+                ],
             )
 
-            st.markdown("#### 주요 계산값")
-            detail_col1, detail_col2 = st.columns(2)
-            with detail_col1:
-                st.write(f"적용 취득세율: **{format_rate(result['profile']['rate'])}**")
-                st.write(f"취득세 감면 후 본세: **{format_won(result['net_acquisition_tax'])}**")
-                st.write(
-                    "소유권 이전 국민주택채권 매입액: "
-                    f"**{format_won(result['ownership_bond']['rounded_purchase'])}**"
-                )
-            with detail_col2:
-                st.write(
-                    "중개보수 합계: "
-                    f"**{format_won(result['brokerage']['total'])}**"
-                )
-                if inputs.loan_enabled and inputs.loan_amount > 0:
-                    st.write(
-                        "채권최고액: "
-                        f"**{format_won(result['mortgage']['collateral_amount'])}**"
-                    )
-                    st.write(
-                        "저당권 국민주택채권 매입액: "
-                        f"**{format_won(result['mortgage']['bond_rounded_purchase'])}**"
-                    )
-                else:
-                    st.write("대출 관련 계산: **대출 없음**")
+    with tab_formula:
+        st.markdown(
+            f"""
+            <div class="formula-panel">
+                <h4>취득세</h4>
+                <ul>
+                    <li>적용 판단: <code>{escape(result['profile']['label'])}</code></li>
+                    <li>과세표준 <code>{escape(format_won(inputs.tax_base))}</code> x <code>{escape(format_rate(result['profile']['rate']))}</code></li>
+                    <li>감면액은 취득세 본세에서만 차감: <code>{escape(format_won(result['gross_acquisition_tax']))}</code> - <code>{escape(format_won(result['acquisition_relief']))}</code></li>
+                </ul>
+            </div>
+            <div class="formula-panel">
+                <h4>지방교육세와 농어촌특별세</h4>
+                <ul>
+                    <li>기본세율 지방교육세: <code>과세표준 x 취득세율 x 0.5 x 0.2</code></li>
+                    <li>중과세율 지방교육세: <code>과세표준 x 0.4%</code></li>
+                    <li>농어촌특별세: 85㎡ 이하는 0원, 85㎡ 초과는 기본 0.2% / 8% 중과 0.6% / 12% 중과 1.0%</li>
+                </ul>
+            </div>
+            <div class="formula-panel">
+                <h4>국민주택채권</h4>
+                <ul>
+                    <li>소유권 이전: 시가표준액 <code>{escape(format_won(inputs.bond_standard_value))}</code> x 서울·광역시 주택 매입률</li>
+                    <li>단수 처리: 0원은 0원, 0원 초과 1만원 미만은 1만원, 1만원 이상은 1만원 단위 반올림</li>
+                    <li>즉시매도 비용: 채권 매입액 x 할인율 <code>{escape(format_rate(inputs.bond_discount_rate))}</code></li>
+                </ul>
+            </div>
+            <div class="formula-panel">
+                <h4>대출</h4>
+                <ul>
+                    <li>채권최고액: 대출금 x 채권최고액 비율</li>
+                    <li>근저당 등록면허세: 채권최고액 x 0.2%</li>
+                    <li>근저당 지방교육세: 등록면허세 x 20%</li>
+                    <li>저당권 국민주택채권: 채권최고액 x 1%, 매입액 상한 10억원</li>
+                </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        with tab_formula:
-            st.markdown(
-                f"""
-                #### 취득세
-                - 적용 판단: `{result['profile']['label']}`
-                - 과세표준 `{format_won(inputs.tax_base)}` x `{format_rate(result['profile']['rate'])}`
-                - 감면액은 취득세 본세에서만 차감: `{format_won(result['gross_acquisition_tax'])}` - `{format_won(result['acquisition_relief'])}`
+    with tab_sources:
+        st.markdown(
+            """
+            - 취득세·인지세·지방교육세·농어촌특별세 개요: [찾기쉬운 생활법령정보](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=3&cnpClsNo=2&csmSeq=534&menuType=cnpcls&popMenu=ov)
+            - 다주택 중과: [지방세법 제13조의2](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1020081767)
+            - 중개보수: [찾기쉬운 생활법령정보 - 부동산 중개보수 산정](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=2&cnpClsNo=2&csmSeq=649&popMenu=ov)
+            - 국민주택채권 조회: [주택도시기금 매입대상금액조회](https://nhuf.molit.go.kr/FP/FP07/FP0705/FP070504.jsp)
+            - 국민주택채권 매입률 별표: [주택도시기금법 시행령 별표](https://www.law.go.kr/LSW/flDownload.do?bylClsCd=110201&flSeq=33335725&gubun=)
 
-                #### 지방교육세와 농어촌특별세
-                - 기본세율 지방교육세: `과세표준 x 취득세율 x 0.5 x 0.2`
-                - 중과세율 지방교육세: `과세표준 x 0.4%`
-                - 농어촌특별세: 85㎡ 이하는 0원, 85㎡ 초과는 기본 0.2% / 8% 중과 0.6% / 12% 중과 1.0%
-
-                #### 국민주택채권
-                - 소유권 이전: 시가표준액 `{format_won(inputs.bond_standard_value)}` x 서울·광역시 주택 매입률
-                - 단수 처리: 0원은 0원, 0원 초과 1만원 미만은 1만원, 1만원 이상은 1만원 단위 반올림
-                - 즉시매도 비용: 채권 매입액 x 할인율 `{format_rate(inputs.bond_discount_rate)}`
-
-                #### 대출
-                - 채권최고액: 대출금 x 채권최고액 비율
-                - 근저당 등록면허세: 채권최고액 x 0.2%
-                - 근저당 지방교육세: 등록면허세 x 20%
-                - 저당권 국민주택채권: 채권최고액 x 1%, 매입액 상한 10억원
-                """
-            )
-
-        with tab_sources:
-            st.markdown(
-                """
-                - 취득세·인지세·지방교육세·농어촌특별세 개요: [찾기쉬운 생활법령정보](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=3&cnpClsNo=2&csmSeq=534&menuType=cnpcls&popMenu=ov)
-                - 다주택 중과: [지방세법 제13조의2](https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1020081767)
-                - 중개보수: [찾기쉬운 생활법령정보 - 부동산 중개보수 산정](https://www.easylaw.go.kr/CSP/CnpClsMain.laf?ccfNo=2&cciNo=2&cnpClsNo=2&csmSeq=649&popMenu=ov)
-                - 국민주택채권 조회: [주택도시기금 매입대상금액조회](https://nhuf.molit.go.kr/FP/FP07/FP0705/FP070504.jsp)
-                - 국민주택채권 매입률 별표: [주택도시기금법 시행령 별표](https://www.law.go.kr/LSW/flDownload.do?bylClsCd=110201&flSeq=33335725&gubun=)
-
-                이 계산기는 사전 검토용입니다. 실제 신고·납부 전에는 관할 구청, 세무사, 법무사, 금융기관 고지액을 확인하세요.
-                """
-            )
+            이 계산기는 사전 검토용입니다. 실제 신고·납부 전에는 관할 구청, 세무사, 법무사, 금융기관 고지액을 확인하세요.
+            """
+        )
 
 
 if __name__ == "__main__":
